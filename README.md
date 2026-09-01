@@ -2,7 +2,7 @@
 
 Hệ thống hỗ trợ phân tích sự cố hạ tầng OpenStack, xác định workload và dịch vụ bị ảnh hưởng, lập phương án phục hồi an toàn, chờ phê duyệt, thực thi và kiểm chứng kết quả.
 
-> **Trạng thái ngày 01/09/2026:** bài toán và kế hoạch đã được chốt; backend DR chưa được triển khai. Milestone đầu tiên là `compute-01 DOWN → POST /incidents → Recovery Context` bằng dữ liệu mock.
+>  Bài toán và kế hoạch đã được chốt; backend DR chưa được triển khai. Milestone đầu tiên là `compute-01 DOWN → POST /incidents → Recovery Context` bằng dữ liệu mock.
 
 ## Đọc nhanh trong một phút
 
@@ -48,12 +48,12 @@ DR Orchestrator là lớp giải quyết chuỗi quyết định và điều ph�
 
 Không.
 
-| Thành phần | Vai trò |
-|---|---|
-| Nova/Placement | Quản lý VM, scheduling, capacity và các recovery primitive |
-| Masakari | Host-failure/VMHA workflow và evacuation automation |
-| NetBox/DCIM | Topology vật lý và inventory dạng system of record |
-| Monitoring/OTel | Telemetry và tín hiệu sự cố |
+| Thành phần    | Vai trò                                                                                                  |
+| --------------- | --------------------------------------------------------------------------------------------------------- |
+| Nova/Placement  | Quản lý VM, scheduling, capacity và các recovery primitive                                            |
+| Masakari        | Host-failure/VMHA workflow và evacuation automation                                                      |
+| NetBox/DCIM     | Topology vật lý và inventory dạng system of record                                                    |
+| Monitoring/OTel | Telemetry và tín hiệu sự cố                                                                          |
 | DR Orchestrator | Ghép hạ tầng với application context, lập batch plan, approval, audit và service-level verification |
 
 Điểm bổ sung chính của đề tài là **application-aware recovery**. Planner không chỉ cố cứu nhiều VM nhất mà ưu tiên tập workload giúp service quan trọng đạt lại mức hoạt động tối thiểu.
