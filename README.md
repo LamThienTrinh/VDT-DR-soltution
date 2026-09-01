@@ -4,7 +4,7 @@ Hệ thống hỗ trợ phân tích sự cố hạ tầng OpenStack, xác địn
 
 >  Bài toán và kế hoạch đã được chốt; backend DR chưa được triển khai. Milestone đầu tiên là `compute-01 DOWN → POST /incidents → Recovery Context` bằng dữ liệu mock.
 
-## Đọc nhanh trong một phút
+## Lưu ý:
 
 Đề tài không cố sửa server hoặc rack vật lý bị hỏng. Khi một compute gặp sự cố, hệ thống cần trả lời:
 
