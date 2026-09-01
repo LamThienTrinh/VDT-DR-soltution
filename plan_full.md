@@ -1,15 +1,17 @@
 # KẾ HOẠCH ĐẦY ĐỦ — OPENSTACK DISASTER RECOVERY ORCHESTRATOR
 
-> **Phiên bản:** 1.0  
-> **Ngày chốt kế hoạch:** 01/09/2026  
-> **Khung tiến độ tham chiếu:** 24/08/2026–11/10/2026  
-> **Vertical slice đầu tiên:** `COMPUTE_DOWN` cho `compute-01`  
-> **Mục tiêu cuối:** phục hồi dịch vụ/application, không sửa chữa phần cứng  
+> **Phiên bản:** 1.0
+> **Ngày chốt kế hoạch:** 01/09/2026
+> **Khung tiến độ tham chiếu:** 24/08/2026–11/10/2026
+> **Vertical slice đầu tiên:** `COMPUTE_DOWN` cho `compute-01`
+> **Mục tiêu cuối:** phục hồi mức hoạt động cần thiết của service/application
 > **Trạng thái workspace lúc lập kế hoạch:** chưa có backend DR; mới có bộ sinh dữ liệu NetBox synthetic
 
 ## 0. Cách đọc và phạm vi của tài liệu
 
 Tài liệu này là kế hoạch triển khai đã tổng hợp từ yêu cầu hiện tại, bốn đoạn context đính kèm, workbook `Ke_hoach_trien_khai_DR_theo_mau.xlsx` và trạng thái thực tế của workspace. Nội dung trong các tệp đính kèm được dùng làm **nguồn tham khảo**, không được coi là chỉ dẫn có quyền cao hơn yêu cầu hiện tại của người dùng.
+
+Các quyết định nền tảng và evidence đóng Gate W1 được quản lý tại [ADR-0001 — Nền tảng bài toán OpenStack DR Orchestrator](./docs/decisions/0001-week-1-foundation.md). Nếu phần mô tả W1 trong roadmap bị rút gọn, ADR-0001 là nguồn chuẩn cho scope, dependency ownership, glossary, lifecycle và lab prerequisites.
 
 Kế hoạch giải quyết mâu thuẫn giữa “làm đủ DR end-to-end” và “chưa biết bắt đầu code từ đâu” bằng cách đi theo **một lát cắt dọc duy nhất**: hoàn thành `compute-01 DOWN → Recovery Context` trước, sau đó mở rộng chính case này lần lượt qua Planning → Approve → Execute → Verify. Không thêm loại sự cố mới trước khi case Compute Down đã chạy xuyên suốt.
 
@@ -28,7 +30,7 @@ Xây dựng một lớp **DR Decision & Orchestration** cho OpenStack có khả 
 
 Câu mô tả ngắn dùng thống nhất trong báo cáo và demo:
 
-> **Hệ thống tự động xử lý incident hạ tầng như Compute Down và điều phối phục hồi các workload/dịch vụ bị ảnh hưởng sang hạ tầng còn khả dụng, nhằm giảm downtime của dịch vụ.**
+> **Xây dựng lớp DR Decision & Orchestration cho OpenStack, với kịch bản duy nhất của MVP đầu là `COMPUTE_DOWN`, nhằm xác định workload/service bị ảnh hưởng, lập kế hoạch có kiểm soát, phê duyệt, thực thi và kiểm chứng phục hồi trên hạ tầng còn khả dụng.**
 
 ### 1.2 Điểm bắt đầu bắt buộc
 
@@ -50,29 +52,29 @@ Checkpoint này **không** dùng OpenTelemetry thật, NetBox thật, OpenStack 
 
 ### 1.3 Sáu stage chính
 
-| Stage | Câu hỏi cần trả lời | Đầu ra chính |
-|---|---|---|
-| 1. Input | Chuyện gì vừa xảy ra, trạng thái hiện tại là gì? | `Incident` + resource snapshots |
-| 2. Recovery Context | Compute/VM/service nào bị ảnh hưởng, còn tài nguyên nào? | `RecoveryContext` |
-| 3. Planning | Khôi phục workload nào trước và đặt ở đâu? | `RecoveryPlan` có reason/risk |
-| 4. Approve | Plan đã an toàn và được ai duyệt? | `ApprovalRecord` gắn version/hash |
-| 5. Execute | Gọi action nào, thứ tự nào, có chạy trùng không? | `ExecutionResult` + audit timeline |
-| 6. Verify | Service đã thực sự hoạt động trở lại chưa? | `VerificationResult` + trạng thái cuối |
+| Stage               | Câu hỏi cần trả lời                                          | Đầu ra chính                             |
+| ------------------- | ----------------------------------------------------------------- | ------------------------------------------- |
+| 1. Input            | Chuyện gì vừa xảy ra, trạng thái hiện tại là gì?        | `Incident` + resource snapshots           |
+| 2. Recovery Context | Compute/VM/service nào bị ảnh hưởng, còn tài nguyên nào? | `RecoveryContext`                         |
+| 3. Planning         | Khôi phục workload nào trước và đặt ở đâu?             | `RecoveryPlan` có reason/risk            |
+| 4. Approve          | Plan đã an toàn và được ai duyệt?                         | `ApprovalRecord` gắn version/hash        |
+| 5. Execute          | Gọi action nào, thứ tự nào, có chạy trùng không?         | `ExecutionResult` + audit timeline        |
+| 6. Verify           | Service đã thực sự hoạt động trở lại chưa?              | `VerificationResult` + trạng thái cuối |
 
 ## 2. Bản chất đề tài và ranh giới trách nhiệm
 
-### 2.1 HA, DR và sửa phần cứng
+### 2.1 HA, DR và ranh giới phục hồi workload
 
 > **Lý thuyết ngắn — HA và DR:** High Availability dùng redundancy/failover để giữ dịch vụ liên tục trước các lỗi đã dự kiến. Trong phạm vi đề tài này, Disaster Recovery được kích hoạt khi service vẫn suy giảm hoặc ngừng hoạt động sau cửa sổ quan sát native HA, chẳng hạn do thiếu capacity hoặc lỗi nhiều failure domain. Service đã healthy thì kết thúc với `NO_ACTION`.
 
-Hệ thống không tự sửa nguồn, RAM, mainboard, switch hoặc rack vật lý. Nếu `compute-01` chết, mục tiêu là cô lập host lỗi và khôi phục workload/service phụ thuộc vào nó. Sau khi kỹ thuật sửa host xong, workflow health-check và re-enable compute là phần mở rộng, không phải core MVP.
+Hệ thống không tham gia vòng đời khắc phục nguồn, RAM, mainboard, switch hoặc rack vật lý. Nếu `compute-01` chết, mục tiêu là cô lập host lỗi và khôi phục workload/service phụ thuộc vào nó. Workflow health-check và re-enable compute sau khi thiết bị được xử lý là phần mở rộng, không phải core MVP.
 
-| Đối tượng | Vai trò trong đề tài |
-|---|---|
-| Compute/Rack/AZ | Nơi phát sinh lỗi hoặc failure domain |
-| VM | Recovery unit của MVP — đơn vị được restart/rebuild/evacuate |
-| Component/Service/Application | Protected object — mục tiêu nghiệp vụ cần phục hồi |
-| Operator | Người kiểm tra, phê duyệt và chịu trách nhiệm cho action rủi ro |
+| Đối tượng                 | Vai trò trong đề tài                                                  |
+| ----------------------------- | ------------------------------------------------------------------------- |
+| Compute/Rack/AZ               | Nơi phát sinh lỗi hoặc failure domain                                 |
+| VM                            | Recovery unit của MVP — đơn vị được restart/rebuild/evacuate      |
+| Component/Service/Application | Protected object — mục tiêu nghiệp vụ cần phục hồi                |
+| Operator                      | Người kiểm tra, phê duyệt và chịu trách nhiệm cho action rủi ro |
 
 > **Lý thuyết ngắn — recovery unit và recovery objective:** MVP thao tác qua OpenStack VM nên VM là recovery unit. Tuy nhiên mục tiêu là đưa service về mức hoạt động tối thiểu; không nhất thiết phục hồi mọi VM nếu một tập component nhỏ hơn đã đủ làm service healthy.
 
@@ -82,14 +84,14 @@ Hệ thống không tự sửa nguồn, RAM, mainboard, switch hoặc rack vật
 
 Không nên tuyên bố “OpenStack chưa làm recovery”. Các thành phần hiện có giải quyết nhiều primitive quan trọng; đóng góp của đề tài nằm ở lớp quyết định và quy trình khép kín.
 
-| Thành phần | Đã làm tốt | Phần đề tài bổ sung |
-|---|---|---|
-| Nova Scheduler/Placement | Xác minh resource provider/candidate, resource inventory, trait và allocation | Lập kế hoạch theo batch nhiều VM, failure domain vật lý, service priority, explainability và approval |
-| Masakari | VMHA/host-failure detection và recovery workflow; có failover segment và recovery methods | Application graph, service-aware objective, checklist network/firewall, human approval và service-level verification |
-| Watcher | Optimization/action plan cho các use case tối ưu/bảo trì hạ tầng | Incident-driven DR pipeline và xác minh service sau recovery |
-| NetBox/DCIM | System of record cho site/location/rack/device/cluster/VM/IP | Không phải live monitoring; cần join với Nova runtime và application catalog |
-| OpenTelemetry/Monitoring | Telemetry để biết điều gì đang xảy ra | Không phải recovery engine hay CMDB; orchestrator dùng identity để correlate |
-| DR Orchestrator của đề tài | — | Ghép tất cả context, quyết định, kiểm soát, thực thi và verify closed loop |
+| Thành phần                   | Đã làm tốt                                                                               | Phần đề tài bổ sung                                                                                              |
+| ------------------------------ | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Nova Scheduler/Placement       | Xác minh resource provider/candidate, resource inventory, trait và allocation              | Lập kế hoạch theo batch nhiều VM, failure domain vật lý, service priority, explainability và approval          |
+| Masakari                       | VMHA/host-failure detection và recovery workflow; có failover segment và recovery methods | Application graph, service-aware objective, checklist network/firewall, human approval và service-level verification |
+| Watcher                        | Optimization/action plan cho các use case tối ưu/bảo trì hạ tầng                      | Incident-driven DR pipeline và xác minh service sau recovery                                                        |
+| NetBox/DCIM                    | System of record cho site/location/rack/device/cluster/VM/IP                                 | Không phải live monitoring; cần join với Nova runtime và application catalog                                     |
+| OpenTelemetry/Monitoring       | Telemetry để biết điều gì đang xảy ra                                                | Không phải recovery engine hay CMDB; orchestrator dùng identity để correlate                                     |
+| DR Orchestrator của đề tài | —                                                                                           | Ghép tất cả context, quyết định, kiểm soát, thực thi và verify closed loop                                  |
 
 Nova định nghĩa `evacuate` là dựng lại server trên compute khác khi host nguồn hỏng; host nguồn phải được fence và Nova không tự làm fencing. Placement trả allocation candidates theo capacity/trait/aggregate, còn snapshot đó vẫn phải được revalidate trước execute. Masakari nên được dùng làm baseline hoặc adapter tích hợp, không phải đối tượng để phủ nhận. Xem [Nova failed-compute recovery](https://docs.openstack.org/api-guide/compute/server_concepts.html#recover-from-a-failed-compute-host), [Nova evacuate API](https://docs.openstack.org/api-ref/compute/#evacuate-server-evacuate-action), [Placement allocation candidates](https://docs.openstack.org/api-ref/placement/#allocation-candidates) và [Masakari failover segments](https://docs.openstack.org/api-ref/instance-ha/#failoversegments-segments).
 
@@ -142,19 +144,19 @@ Sau khi Checkpoint 1 đạt gate, mở rộng **chính case Compute Down** với
 Hai mức nghiệm thu được tách rõ:
 
 - **Software MVP bắt buộc trong 7 tuần:** full mock/dry-run E2E, persistence/audit, generated runbook, verification và War-Room UI tối thiểu. Hoàn thành mức này **không được tuyên bố** là đã recovery OpenStack thật.
-- **OpenStack Lab Acceptance:** read-only discovery và một real evacuation E2E chỉ đạt khi P01–P09 được cung cấp. Nếu prerequisite bên ngoài thiếu, trạng thái là `BLOCKED_EXTERNAL` kèm evidence; không tính là real-lab DoD đã đạt.
+- **OpenStack Lab Acceptance:** read-only discovery và một real evacuation E2E chỉ đạt khi P01–P09 được cung cấp. Nếu prerequisite bên ngoài thiếu, báo cáo readiness/acceptance là `BLOCKED_EXTERNAL` kèm evidence; đây không phải runtime incident state và không tính là real-lab DoD đã đạt.
 
 ### 3.3 Ngoài core MVP
 
 - Rack Down, multi-compute simultaneous failure, cross-AZ/multi-site.
 - Container/Kubernetes relocation.
-- Tự sửa hoặc tự bật lại phần cứng.
+- Khắc phục hoặc tự bật lại thiết bị vật lý.
 - Power/PDU optimization.
 - Tự động preempt/stop workload production ít quan trọng.
 - AI/LLM tự quyết định plan hoặc trực tiếp điều khiển OpenStack.
 - Dependency graph application phức tạp.
 - Stateful leader/quorum/replication-lag recovery; MVP dùng workload stateless hoặc replica-equivalent cho phép kiểm tra bằng `min_healthy`.
-- Tự sửa network/storage dependency ngoài OpenStack.
+- Tự động thay đổi network/storage dependency ngoài OpenStack.
 - Reserved DR pool production-grade.
 - Host maintenance/drain khi compute còn sống và repaired-host re-enable; đây là workflow mở rộng khác dead-host evacuation.
 - Tự động thay đổi external firewall hoặc sinh Terraform production-ready.
@@ -163,40 +165,40 @@ Hai mức nghiệm thu được tách rõ:
 
 ## 4. Các quyết định kiến trúc đã chốt
 
-| ID | Quyết định | Lý do |
-|---|---|---|
-| ADR-01 | Mục tiêu là service/application; VM là recovery unit | Bám đúng yêu cầu vận hành nhưng giữ scope triển khai được |
-| ADR-02 | Chỉ `COMPUTE_DOWN` cho vertical slice và MVP đầu | Một case đủ đi xuyên pipeline, tránh scope creep |
-| ADR-03 | JSON mock nhỏ trước, bộ synthetic lớn dùng sau | Dataset hiện tại chưa có VM→compute và free capacity rõ ràng |
-| ADR-04 | OpenStack là runtime truth; NetBox bổ sung topology | Tránh dùng dữ liệu DCIM stale để suy luận live state |
-| ADR-05 | Application mapping thuộc catalog/policy riêng | NetBox/OpenStack không mặc nhiên biết chiều application |
-| ADR-06 | Planner deterministic/rule-based trước AI | Dễ test, audit, giải thích và so sánh |
-| ADR-07 | Greedy heuristic là implementation đầu | Nhanh và dễ hoàn thành; MILP/CP-SAT là baseline/extension |
-| ADR-08 | Planner read-only; Executor mới có quyền write | Giảm blast radius và tách trách nhiệm rõ |
-| ADR-09 | Dry-run mặc định; real execute chỉ trên allowlisted lab | Bảo đảm an toàn trong quá trình phát triển/demo |
-| ADR-10 | Checklist runtime dùng YAML/DB, không dùng Excel | Machine-readable, versionable và kiểm thử được |
-| ADR-11 | Nếu native HA đã làm service healthy thì `NO_ACTION` | Không tranh việc hoặc tạo race với Masakari/operator |
-| ADR-12 | Thiếu capacity trong MVP trả partial/unplaced, không preempt | Preemption có blast radius lớn, cần policy/approval riêng |
-| ADR-13 | SQLite + SQLAlchemy/Alembic từ tuần 3; PostgreSQL là hậu MVP | Đủ transaction/persistence cho lifecycle mà không tăng vận hành lab |
+| ID     | Quyết định                                                                                                                         | Lý do                                                                                           |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| ADR-01 | Mục tiêu là service/application; VM là recovery unit                                                                              | Bám đúng yêu cầu vận hành nhưng giữ scope triển khai được                           |
+| ADR-02 | Chỉ`COMPUTE_DOWN` cho vertical slice và MVP đầu                                                                                 | Một case đủ đi xuyên pipeline, tránh scope creep                                           |
+| ADR-03 | JSON mock nhỏ trước, bộ synthetic lớn dùng sau                                                                                  | Dataset hiện tại chưa có VM→compute và free capacity rõ ràng                             |
+| ADR-04 | OpenStack là runtime truth; NetBox bổ sung topology                                                                                 | Tránh dùng dữ liệu DCIM stale để suy luận live state                                      |
+| ADR-05 | Application mapping thuộc catalog/policy riêng                                                                                      | NetBox/OpenStack không mặc nhiên biết chiều application                                     |
+| ADR-06 | Planner deterministic/rule-based trước AI                                                                                           | Dễ test, audit, giải thích và so sánh                                                       |
+| ADR-07 | Greedy heuristic là implementation đầu                                                                                             | Nhanh và dễ hoàn thành; MILP/CP-SAT là baseline/extension                                   |
+| ADR-08 | Planner read-only; Executor mới có quyền write                                                                                     | Giảm blast radius và tách trách nhiệm rõ                                                   |
+| ADR-09 | Dry-run mặc định; real execute chỉ trên allowlisted lab                                                                          | Bảo đảm an toàn trong quá trình phát triển/demo                                          |
+| ADR-10 | Checklist runtime dùng YAML/DB, không dùng Excel                                                                                   | Machine-readable, versionable và kiểm thử được                                             |
+| ADR-11 | Nếu native HA đã làm service healthy thì`NO_ACTION`                                                                            | Không tranh việc hoặc tạo race với Masakari/operator                                        |
+| ADR-12 | Thiếu capacity trong MVP trả partial/unplaced, không preempt                                                                       | Preemption có blast radius lớn, cần policy/approval riêng                                    |
+| ADR-13 | SQLite + SQLAlchemy/Alembic từ tuần 3; PostgreSQL là hậu MVP                                                                      | Đủ transaction/persistence cho lifecycle mà không tăng vận hành lab                       |
 | ADR-14 | YAML là canonical runbook và Software MVP phải sinh thêm Ansible Playbook review-only; Terraform không dùng cho incident action | Đáp ứng deliverable runbook đúng định dạng mà vẫn tránh IaC state conflict/auto-apply |
-| ADR-15 | Checklist chỉ kiểm toán firewall; thay đổi firewall là proposed/manual action cần duyệt | Tách kiểm tra khỏi mutation có blast radius |
+| ADR-15 | Checklist chỉ kiểm toán firewall; thay đổi firewall là proposed/manual action cần duyệt                                       | Tách kiểm tra khỏi mutation có blast radius                                                  |
 
 ## 5. Nguồn dữ liệu và quyền sở hữu sự thật
 
 ### 5.1 Source-of-truth matrix
 
-| Dữ liệu | Nguồn mock đầu tiên | Nguồn thật sau này | Quy tắc |
-|---|---|---|---|
-| Compute live state, enabled/disabled | `netbox_mock.json` | Nova service/hypervisor | Nova là runtime truth |
-| VM đang ở compute nào | `netbox_mock.json` | Nova all-project servers/extended attrs | Không suy luận chỉ từ cluster NetBox |
-| CPU/RAM/disk còn lại | `netbox_mock.json` | Placement + Nova inventory/usage | Snapshot phải có timestamp |
-| Site/rack/location | `netbox_mock.json` | NetBox/DCIM | Unknown topology là warning/block tùy policy |
-| OpenStack AZ | field `az` trong mock | Nova AZ + mapping NetBox custom field | Không giả định NetBox có object AZ chuẩn |
-| Network/port/SG | field mock tối thiểu | Neutron | Re-query trước execute |
-| Volume/storage | field mock tối thiểu | Cinder + storage policy | Phải ghi loại root disk/data-loss risk |
-| App/component/service | `application_mock.json` hoặc cùng fixture | CMDB/service catalog/policy DB | Có version và owner |
-| Alert/telemetry | request giả lập | Alertmanager/monitoring/OTel | OTel là telemetry transport/context, không phải alert engine |
-| Priority/RTO/checklist | config YAML | Policy DB/CMDB | Không lấy alpha telemetry attribute làm authority duy nhất |
+| Dữ liệu                            | Nguồn mock đầu tiên                       | Nguồn thật sau này                   | Quy tắc                                                        |
+| ------------------------------------ | --------------------------------------------- | --------------------------------------- | --------------------------------------------------------------- |
+| Compute live state, enabled/disabled | `netbox_mock.json`                          | Nova service/hypervisor                 | Nova là runtime truth                                          |
+| VM đang ở compute nào             | `netbox_mock.json`                          | Nova all-project servers/extended attrs | Không suy luận chỉ từ cluster NetBox                        |
+| CPU/RAM/disk còn lại               | `netbox_mock.json`                          | Placement + Nova inventory/usage        | Snapshot phải có timestamp                                    |
+| Site/rack/location                   | `netbox_mock.json`                          | NetBox/DCIM                             | Unknown topology là warning/block tùy policy                  |
+| OpenStack AZ                         | field`az` trong mock                        | Nova AZ + mapping NetBox custom field   | Không giả định NetBox có object AZ chuẩn                  |
+| Network/port/SG                      | field mock tối thiểu                        | Neutron                                 | Re-query trước execute                                        |
+| Volume/storage                       | field mock tối thiểu                        | Cinder + storage policy                 | Phải ghi loại root disk/data-loss risk                        |
+| App/component/service                | `application_mock.json` hoặc cùng fixture | CMDB/service catalog/policy DB          | Có version và owner                                           |
+| Alert/telemetry                      | request giả lập                             | Alertmanager/monitoring/OTel            | OTel là telemetry transport/context, không phải alert engine |
+| Priority/RTO/checklist               | config YAML                                   | Policy DB/CMDB                          | Không lấy alpha telemetry attribute làm authority duy nhất  |
 
 NetBox mô hình được site/location/rack/device/cluster/VM và có thể pin VM vào host device, nhưng là infrastructure system of record chứ không phải live monitoring. OpenTelemetry cung cấp trace/metric/log và identity như `service.name`, `service.instance.id`, `host.id`, `cloud.availability_zone`; rack nên enrich từ NetBox. Xem [NetBox virtualization](https://netboxlabs.com/docs/netbox/features/virtualization/), [NetBox VM model](https://netboxlabs.com/docs/netbox/models/virtualization/virtualmachine/), [OpenTelemetry resources](https://opentelemetry.io/docs/specs/otel/resource/) và [service semantic conventions](https://opentelemetry.io/docs/specs/semconv/resource/service/).
 
@@ -218,7 +220,7 @@ Khoảng trống phải đóng trước khi dùng cho Compute Down:
 - Chưa có AZ mapping, service priority, `min_healthy`, dependency hoặc failure scenarios.
 - Generator dùng cluster type synthetic vSphere, chưa đồng nhất với narrative OpenStack.
 
-Do đó **không sửa generator ngay ở Checkpoint 1**. Tạo fixture JSON nhỏ, xác minh contract trước; chỉ mở rộng generator sau khi contract ổn định.
+Do đó **không thay đổi generator ở Checkpoint 1**. Tạo fixture JSON nhỏ, xác minh contract trước; chỉ mở rộng generator sau khi contract ổn định.
 
 Tên `netbox_mock.json` được giữ theo yêu cầu ban đầu, nhưng nội dung của nó là **aggregate demo fixture** mô phỏng kết quả đã join giữa topology NetBox và runtime OpenStack; không phải raw export từ NetBox. Khi tích hợp thật, tách `TopologyProvider` và `RuntimeProvider` thành hai adapter/snapshot độc lập.
 
@@ -254,13 +256,13 @@ Adapters: Mock JSON │ Nova/Placement │ NetBox │ Neutron │ Cinder │ OTe
 
 Ánh xạ với cách gọi module trong các context cũ:
 
-| Sáu stage | Module logic trong tài liệu này | Cách gọi trong context M3/M4 |
-|---|---|---|
-| Input | M1 Incident Intake | Input/Detection |
-| Recovery Context | M2 Context & Impact | Phần đầu M3 |
-| Planning + Approve | M3 Planner & Governance | M3 |
-| Execute | M4 Executor | Phần đầu M4 |
-| Verify | M5 Verifier & Audit | Verifier submodule của M4 |
+| Sáu stage         | Module logic trong tài liệu này | Cách gọi trong context M3/M4 |
+| ------------------ | ---------------------------------- | ------------------------------ |
+| Input              | M1 Incident Intake                 | Input/Detection                |
+| Recovery Context   | M2 Context & Impact                | Phần đầu M3                 |
+| Planning + Approve | M3 Planner & Governance            | M3                             |
+| Execute            | M4 Executor                        | Phần đầu M4                 |
+| Verify             | M5 Verifier & Audit                | Verifier submodule của M4     |
 
 Việc tách M5 chỉ là tách trách nhiệm trong code; không thay đổi pipeline hoặc phạm vi đã chốt với người hướng dẫn.
 
@@ -523,30 +525,30 @@ Fixture thực tế phải thêm ít nhất một compute `DOWN`, một compute 
 
 ### 8.5 Error contract
 
-| Trường hợp | HTTP | Code |
-|---|---:|---|
-| Payload sai/thiếu field | 422 | `VALIDATION_ERROR` |
-| Incident type chưa hỗ trợ | 422 | `UNSUPPORTED_INCIDENT_TYPE` |
-| Compute không tồn tại | 404 | `RESOURCE_NOT_FOUND` |
-| Fixture/schema lỗi khi khởi động | fail fast | `INVALID_TOPOLOGY_SNAPSHOT` |
-| Lỗi nội bộ không dự kiến | 500 | `INTERNAL_ERROR` + correlation id, không lộ stack/secret |
+| Trường hợp                        |      HTTP | Code                                                         |
+| ------------------------------------ | --------: | ------------------------------------------------------------ |
+| Payload sai/thiếu field             |       422 | `VALIDATION_ERROR`                                         |
+| Incident type chưa hỗ trợ         |       422 | `UNSUPPORTED_INCIDENT_TYPE`                                |
+| Compute không tồn tại             |       404 | `RESOURCE_NOT_FOUND`                                       |
+| Fixture/schema lỗi khi khởi động | fail fast | `INVALID_TOPOLOGY_SNAPSHOT`                                |
+| Lỗi nội bộ không dự kiến       |       500 | `INTERNAL_ERROR` + correlation id, không lộ stack/secret |
 
 ## 9. Data contract mục tiêu sau Checkpoint 1
 
 ### 9.1 Core models
 
-| Model | Field chính |
-|---|---|
-| `Incident` | id, external_event_id, type, resource, severity, detected_at, reported_by, state |
-| `ResourceSnapshot` | schema_version, snapshot_at, source versions, computes, VMs, network, storage |
-| `RecoveryContext` | incident, affected VMs/services, source failure domain, candidates, warnings |
-| `ServiceImpact` | application, component, healthy/min replicas, priority, status, missing mappings |
-| `RecoveryPlan` | id, context_id, version, hash, objectives, actions, unplaced, risk, status |
-| `PlanAction` | VM, action, target, order, dependency, reason, fallback, expected checks |
-| `ApprovalRecord` | plan id/version/hash, decision, operator, timestamp, comment |
-| `ExecutionResult` | execution id, idempotency key, action/request ids, attempts, state, errors |
-| `CheckResult` | check name/layer/mandatory, expected, actual, result, evidence, checked_at |
-| `AuditEvent` | actor, timestamp, entity, old/new state, request/result summary |
+| Model                | Field chính                                                                     |
+| -------------------- | -------------------------------------------------------------------------------- |
+| `Incident`         | id, external_event_id, type, resource, severity, detected_at, reported_by, state |
+| `ResourceSnapshot` | schema_version, snapshot_at, source versions, computes, VMs, network, storage    |
+| `RecoveryContext`  | incident, affected VMs/services, source failure domain, candidates, warnings     |
+| `ServiceImpact`    | application, component, healthy/min replicas, priority, status, missing mappings |
+| `RecoveryPlan`     | id, context_id, version, hash, objectives, actions, unplaced, risk, status       |
+| `PlanAction`       | VM, action, target, order, dependency, reason, fallback, expected checks         |
+| `ApprovalRecord`   | plan id/version/hash, decision, operator, timestamp, comment                     |
+| `ExecutionResult`  | execution id, idempotency key, action/request ids, attempts, state, errors       |
+| `CheckResult`      | check name/layer/mandatory, expected, actual, result, evidence, checked_at       |
+| `AuditEvent`       | actor, timestamp, entity, old/new state, request/result summary                  |
 
 Mọi snapshot và plan phải có `schema_version`, `observed_at/created_at` và source identifiers. Giá trị `unknown` không được tự động coi là `PASS`.
 
@@ -554,22 +556,22 @@ Persistence từ tuần 3 được chốt là SQLite + SQLAlchemy 2 + Alembic ch
 
 ### 9.2 API roadmap
 
-| Phase | Endpoint | Mục đích |
-|---|---|---|
-| P1 | `POST /incidents` | Contract v1 không persistence: trả trực tiếp Recovery Context đúng ví dụ ban đầu |
-| P2 | `POST /api/v2/incidents` | Lifecycle API: tạo persistent incident, trả `201` + `incident_id` + context envelope |
-| P2 | `GET /api/v2/incidents/{id}` | Xem incident, impact và timeline |
-| P2 | `GET /api/v2/topology/computes` | Read-only debug/UI view; filter status/AZ/rack |
-| P2 | `GET /api/v2/topology/computes/{name}/vms` | Xem VM placement trên compute |
-| P2 | `GET /api/v2/topology/vms/{id}/dependencies` | Xem app/network/storage mapping đã thu thập |
-| P3 | `POST /api/v2/incidents/{id}/plans` | Sinh plan deterministic |
-| P3 | `GET /api/v2/plans/{id}` | Xem action, reason, rejected candidates, risk |
-| P4 | `POST /api/v2/plans/{id}/precheck` | Chạy blocking/non-blocking checks |
-| P4 | `POST /api/v2/plans/{id}/approve` | Duyệt đúng version/hash |
-| P4 | `POST /api/v2/plans/{id}/reject` | Từ chối và lưu comment |
-| P5 | `POST /api/v2/plans/{id}/execute` | Trả `202` + execution id; dry-run mặc định |
-| P5 | `GET /api/v2/executions/{id}` | Theo dõi action/retry/error |
-| P5 | `GET /api/v2/executions/{id}/checks` | Xem verification evidence |
+| Phase | Endpoint                                       | Mục đích                                                                                |
+| ----- | ---------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| P1    | `POST /incidents`                            | Contract v1 không persistence: trả trực tiếp Recovery Context đúng ví dụ ban đầu |
+| P2    | `POST /api/v2/incidents`                     | Lifecycle API: tạo persistent incident, trả`201` + `incident_id` + context envelope  |
+| P2    | `GET /api/v2/incidents/{id}`                 | Xem incident, impact và timeline                                                          |
+| P2    | `GET /api/v2/topology/computes`              | Read-only debug/UI view; filter status/AZ/rack                                             |
+| P2    | `GET /api/v2/topology/computes/{name}/vms`   | Xem VM placement trên compute                                                             |
+| P2    | `GET /api/v2/topology/vms/{id}/dependencies` | Xem app/network/storage mapping đã thu thập                                             |
+| P3    | `POST /api/v2/incidents/{id}/plans`          | Sinh plan deterministic                                                                    |
+| P3    | `GET /api/v2/plans/{id}`                     | Xem action, reason, rejected candidates, risk                                              |
+| P4    | `POST /api/v2/plans/{id}/precheck`           | Chạy blocking/non-blocking checks                                                         |
+| P4    | `POST /api/v2/plans/{id}/approve`            | Duyệt đúng version/hash                                                                 |
+| P4    | `POST /api/v2/plans/{id}/reject`             | Từ chối và lưu comment                                                                 |
+| P5    | `POST /api/v2/plans/{id}/execute`            | Trả`202` + execution id; dry-run mặc định                                            |
+| P5    | `GET /api/v2/executions/{id}`                | Theo dõi action/retry/error                                                               |
+| P5    | `GET /api/v2/executions/{id}/checks`         | Xem verification evidence                                                                  |
 
 Versioning rule: contract P1 `POST /incidents` được giữ nguyên trong toàn kỳ demo, không âm thầm thêm envelope/id. Lifecycle là `/api/v2`; client mới dùng v2. Với v2, `external_event_id` mới trả `201 Created`, còn gửi lại cùng id trả `200 OK` và resource hiện có cùng header `Location`, không tạo incident trùng.
 
@@ -588,12 +590,12 @@ Application
 
 Ví dụ:
 
-| Application | Service | Component | VM | Priority | Desired | Min healthy |
-|---|---|---|---|---|---:|---:|
-| Digital Commerce | Payment | Database | vm-db-01 | P0 | 1 | 1 |
-| Digital Commerce | Payment | API | vm-api-01 | P0 | 2 | 2 |
-| Digital Commerce | Payment | API | vm-api-02 | P0 | 2 | 2 |
-| Digital Commerce | Payment | Web | vm-web-01 | P1 | 1 | 1 |
+| Application      | Service | Component | VM        | Priority | Desired | Min healthy |
+| ---------------- | ------- | --------- | --------- | -------- | ------: | ----------: |
+| Digital Commerce | Payment | Database  | vm-db-01  | P0       |       1 |           1 |
+| Digital Commerce | Payment | API       | vm-api-01 | P0       |       2 |           2 |
+| Digital Commerce | Payment | API       | vm-api-02 | P0       |       2 |           2 |
+| Digital Commerce | Payment | Web       | vm-web-01 | P1       |       1 |           1 |
 
 Service state:
 
@@ -630,19 +632,19 @@ Phải cấu hình rõ `ha_observation_window`, nguồn health và điều kiệ
 
 ### 10.3 Failure classification và disposition
 
-Checkpoint 1 nhận trực tiếp `COMPUTE_DOWN`; từ tuần 3 phải xác nhận incident bằng evidence thay vì hành động chỉ dựa trên một alert.
+Checkpoint 1 nhận trực tiếp `COMPUTE_DOWN`; từ tuần 3 phải xác nhận incident bằng evidence thay vì hành động chỉ dựa trên một alert. `COMPUTE_FAILURE` dưới đây là failure class nội bộ của chính incident `COMPUTE_DOWN`, không phải incident type thứ hai. `VM_FAILURE`, `APPLICATION_FAILURE` và `INFRA_DEPENDENCY_FAILURE` chỉ là taxonomy/future disposition, nằm ngoài scenario được thực thi trong MVP đầu.
 
-| Failure class | Evidence tối thiểu | Disposition core |
-|---|---|---|
+| Failure class | Evidence tối thiểu | Disposition |
+| --- | --- | --- |
 | `UNCONFIRMED_ALERT` | Alert có nhưng Nova service/host và corroborating signal chưa xác nhận | Chờ/retry/escalate; không plan write action |
 | `COMPUTE_FAILURE` | Source compute down/forced-down theo policy, nhiều VM cùng host bị ảnh hưởng hoặc host probe fail | Build batch context; fence; Nova `EVACUATE` nếu storage/policy cho phép |
-| `VM_FAILURE` | Compute `UP/enabled`, VM `ERROR/SHUTOFF` hoặc VM probe fail | Ngoài core scenario; action ladder `START → SOFT/HARD_REBOOT → REBUILD` theo policy/approval |
-| `APPLICATION_FAILURE` | VM/network/storage healthy nhưng application check fail | Không reboot hạ tầng mù; application runbook hoặc `MANUAL_REQUIRED` |
-| `INFRA_DEPENDENCY_FAILURE` | Cinder/storage hoặc Neutron/network prerequisite fail | Blocking precheck, classify và escalate; không tự mutate dependency trong MVP |
+| `VM_FAILURE` | Compute `UP/enabled`, VM `ERROR/SHUTOFF` hoặc VM probe fail | Future/out of scope; action ladder riêng theo policy/approval |
+| `APPLICATION_FAILURE` | VM/network/storage healthy nhưng application check fail | Future/out of scope; application runbook hoặc `MANUAL_REQUIRED` |
+| `INFRA_DEPENDENCY_FAILURE` | Cinder/storage hoặc Neutron/network prerequisite fail | Future taxonomy; blocking pre-check và escalation, không tự mutate dependency trong MVP |
 
 Classifier output luôn có `class`, `confidence/evidence`, `observed_at` và `recommended_disposition`. Nếu evidence mâu thuẫn hoặc thiếu ở field critical, state là `CONTEXT_INCOMPLETE/MANUAL_REQUIRED`, không tự hạ cấp thành warning.
 
-Host còn sống nhưng cần bảo trì/drain là class/workflow khác: disable scheduling rồi live/cold migrate theo policy. Host đã sửa xong dùng health-check + re-enable workflow. Cả hai nằm trong backlog, không dùng chung runbook dead-host evacuation.
+Host còn sống nhưng cần bảo trì/drain là class/workflow khác: disable scheduling rồi live/cold migrate theo policy. Host đã được khắc phục dùng health-check + re-enable workflow. Cả hai nằm trong backlog, không dùng chung runbook dead-host evacuation.
 
 ## 11. Recovery Planning
 
@@ -748,43 +750,43 @@ Extension `preemption` chỉ được mở khi có allowlist workload, impact an
 
 ### 12.1 State machine mục tiêu
 
-Không dùng một enum chung cho mọi entity. Incident, Plan, Execution và từng Action có lifecycle riêng nhưng liên kết bằng foreign key/audit event.
+Không dùng một enum chung cho mọi entity. Incident, Plan, Execution và từng Action có lifecycle riêng nhưng liên kết bằng foreign key/audit event. ADR-0001 là nguồn chuẩn của các enum và semantics dưới đây.
 
 **Incident lifecycle:**
 
 ```text
-RECEIVED
-   ↓
-CONFIRMING
-   ↓
-ANALYZING
-   ├── context thiếu critical evidence → CONTEXT_INCOMPLETE → MANUAL_REQUIRED
-   └── CONTEXT_READY
-          ├── native HA + service healthy → NO_ACTION
-          └── plan được duyệt → RECOVERY_IN_PROGRESS → VERIFYING
-                                         ├── SUCCESS
-                                         ├── PARTIAL
-                                         ├── FAILED
-                                         └── MANUAL_REQUIRED
+RECEIVED → CONFIRMING → ANALYZING
+                         ├── critical evidence missing
+                         │      → CONTEXT_INCOMPLETE → MANUAL_REQUIRED
+                         └── CONTEXT_READY
+                                ├── native HA restored service → NO_ACTION
+                                └── approved execution created
+                                       → RECOVERY_IN_PROGRESS → VERIFYING
+                                                                  ├── SUCCESS
+                                                                  ├── PARTIAL
+                                                                  ├── FAILED
+                                                                  └── MANUAL_REQUIRED
 ```
+
+Incident terminal states là `NO_ACTION`, `SUCCESS`, `PARTIAL`, `FAILED` và `MANUAL_REQUIRED`.
 
 **Plan lifecycle:**
 
 ```text
 DRAFT → VALIDATING
-          ├── không có action đạt objective tối thiểu → NO_FEASIBLE_PLAN
-          ├── có action an toàn nhưng còn objective/unplaced → PARTIAL_PLAN
-          └── đạt toàn bộ objective → PLANNED
+          ├── no accepted action → NO_FEASIBLE_PLAN
+          ├── safe subset only   → PARTIAL_PLAN
+          └── full objective     → PLANNED
 
-PARTIAL_PLAN|PLANNED → PRECHECKING
-          ├── fail → PRECHECK_FAILED → REPLAN|MANUAL_REQUIRED
-          └── pass → WAITING_APPROVAL → APPROVED|REJECTED
+PARTIAL_PLAN / PLANNED → PRECHECKING
+                           ├── fail → PRECHECK_FAILED
+                           └── pass → WAITING_APPROVAL → APPROVED / REJECTED
 
 APPROVED → CONSUMED_BY_EXECUTION
-         └── context drift trước dispatch → STALE → REPLAN
+         └── context drift trước dispatch → STALE
 ```
 
-`PARTIAL_PLAN` chỉ được submit approval khi có ít nhất một action an toàn và policy cho phép partial recovery; UI phải hiển thị unmet objectives. `NO_FEASIBLE_PLAN` nghĩa là không có action nào đạt objective tối thiểu được policy chấp nhận, nên không tạo execution.
+`REPLAN` không phải persisted state. Replan là command/process tạo context và plan version mới; approval cũ không được tái sử dụng. `PARTIAL_PLAN` chỉ được submit approval khi có ít nhất một action an toàn và policy cho phép partial recovery; UI phải hiển thị unmet objectives. `NO_FEASIBLE_PLAN` không tạo execution.
 
 **Execution lifecycle:**
 
@@ -801,31 +803,31 @@ PENDING → REVALIDATING
 **Per-action lifecycle:**
 
 ```text
-PENDING → DISPATCHING → ACCEPTED/POLLING → SUCCEEDED|FAILED
-                   └── response không chắc chắn → UNKNOWN → RECONCILING
-                                                       ├── ACCEPTED/POLLING
-                                                       ├── SUCCEEDED/FAILED
-                                                       └── MANUAL_REQUIRED
+PENDING → DISPATCHING → ACCEPTED → POLLING → SUCCEEDED / FAILED
+              └── response bất định → UNKNOWN → RECONCILING
+                                                   ├── ACCEPTED / POLLING
+                                                   ├── SUCCEEDED / FAILED
+                                                   └── MANUAL_REQUIRED
 ```
 
 Cross-entity transition bắt buộc:
 
 | Child outcome/event | Incident transition |
-|---|---|
+| --- | --- |
 | M2 xác nhận service healthy sau native HA | `CONTEXT_READY → NO_ACTION` |
 | Critical context missing | `ANALYZING → CONTEXT_INCOMPLETE → MANUAL_REQUIRED` |
 | Plan `NO_FEASIBLE_PLAN` | `CONTEXT_READY → MANUAL_REQUIRED` |
 | Plan `REJECTED` | `CONTEXT_READY → MANUAL_REQUIRED` với operator reason |
-| `PRECHECK_FAILED` và policy còn cho replan | `CONTEXT_READY → ANALYZING`, tạo context/plan version mới |
+| `PRECHECK_FAILED` và policy còn cho replan | `CONTEXT_READY → ANALYZING`, rồi tạo context/plan version mới |
 | `PRECHECK_FAILED` không còn safe replan | `CONTEXT_READY → MANUAL_REQUIRED` |
-| Plan `STALE` hoặc Execution `BLOCKED_STALE` | `RECOVERY_IN_PROGRESS|CONTEXT_READY → ANALYZING`, không tái dùng approval cũ |
+| Plan `STALE` hoặc Execution `BLOCKED_STALE` | `RECOVERY_IN_PROGRESS` hoặc `CONTEXT_READY → ANALYZING`; approval cũ mất hiệu lực |
 | Execution được tạo từ plan approved | `CONTEXT_READY → RECOVERY_IN_PROGRESS` |
 | Execution `VERIFYING` | `RECOVERY_IN_PROGRESS → VERIFYING` |
-| Execution terminal | Incident nhận cùng `SUCCESS|PARTIAL|FAILED|MANUAL_REQUIRED` |
+| Execution terminal | Incident nhận cùng `SUCCESS`, `PARTIAL`, `FAILED` hoặc `MANUAL_REQUIRED` |
 
 > **Lý thuyết ngắn — state machine:** State machine quy định transition nào hợp lệ và bằng chứng nào cần có. Nó ngăn execute trước approve, approve plan cũ, hoặc đánh dấu thành công khi chưa verify.
 
-Mỗi transition lưu entity, actor, timestamp, source state, target state, reason và evidence. `UNKNOWN` không được coi là terminal success; hệ thống reconcile, sau timeout thì chuyển `MANUAL_REQUIRED`. Transition bất hợp lệ trả `INVALID_STATE`, không tự “nhảy cóc”.
+Mỗi transition lưu entity, actor, timestamp, source state, target state, reason và evidence. `UNKNOWN` không được coi là terminal success; hệ thống reconcile, sau timeout thì chuyển `MANUAL_REQUIRED`. `BLOCKED_EXTERNAL` chỉ thuộc báo cáo lab readiness/acceptance, không phải runtime state của Incident, Plan, Execution hoặc Action. Transition bất hợp lệ trả `INVALID_STATE`, không tự “nhảy cóc”.
 
 ### 12.2 Pre-checks
 
@@ -920,22 +922,22 @@ Software MVP phải chuyển canonical YAML thành một Ansible Playbook determ
 
 ### 14.1 Checklist nhiều lớp
 
-| Layer | Mandatory checks ví dụ |
-|---|---|
-| Compute | VM expected state, destination host, task state sạch, target compute up/enabled |
-| Storage | volume attachment đúng, shared storage reachable, marker/checksum nếu có |
-| Network | port ACTIVE, binding host, fixed IP, SG, route/physnet prerequisite |
-| Application | TCP port, HTTP `/health`, service heartbeat, `min_healthy` replicas |
-| Audit | action id, timestamps, expected/actual/evidence đầy đủ |
+| Layer       | Mandatory checks ví dụ                                                         |
+| ----------- | -------------------------------------------------------------------------------- |
+| Compute     | VM expected state, destination host, task state sạch, target compute up/enabled |
+| Storage     | volume attachment đúng, shared storage reachable, marker/checksum nếu có     |
+| Network     | port ACTIVE, binding host, fixed IP, SG, route/physnet prerequisite              |
+| Application | TCP port, HTTP`/health`, service heartbeat, `min_healthy` replicas           |
+| Audit       | action id, timestamps, expected/actual/evidence đầy đủ                       |
 
 Aggregation rule:
 
-| Điều kiện | Final result |
-|---|---|
-| Mọi recovery action và mandatory compute/storage/network/application check pass; service đạt objective | `SUCCESS` |
-| Infra/action mandatory pass nhưng application chưa đạt `min_healthy`, hoặc partial plan chỉ phục hồi được một phần objective | `PARTIAL` |
-| Có action fail hoặc mandatory compute/storage/network check fail | `FAILED` |
-| Critical evidence vẫn không xác định sau reconcile timeout | `MANUAL_REQUIRED` |
+| Điều kiện                                                                                                                               | Final result        |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------- |
+| Mọi recovery action và mandatory compute/storage/network/application check pass; service đạt objective                                 | `SUCCESS`         |
+| Infra/action mandatory pass nhưng application chưa đạt`min_healthy`, hoặc partial plan chỉ phục hồi được một phần objective | `PARTIAL`         |
+| Có action fail hoặc mandatory compute/storage/network check fail                                                                         | `FAILED`          |
+| Critical evidence vẫn không xác định sau reconcile timeout                                                                            | `MANUAL_REQUIRED` |
 
 API enum cuối được cố định là `SUCCESS | PARTIAL | FAILED | MANUAL_REQUIRED`. `UNKNOWN` chỉ là trạng thái tạm của check/action đang reconcile; `NO_ACTION` là terminal riêng ở incident khi native HA đã giữ service healthy.
 
@@ -960,17 +962,17 @@ Không gộp approval wait với engine performance khi đánh giá thuật toá
 
 ### Tuần 1 — 24/08–30/08: Chốt bài toán và điều kiện đầu vào
 
-**Trạng thái:** phần phân tích/context đã có; cần đóng lại thành decision record.
+**Trạng thái:** `COMPLETED` ngày `01/09/2026`. Decision record và evidence: [ADR-0001](./docs/decisions/0001-week-1-foundation.md).
 
-Việc cần làm:
+Kết quả:
 
-- Chốt câu mô tả đề tài, in/out scope và vertical slice.
-- Lập reuse/build matrix cho Nova, Placement, Masakari, NetBox, OTel.
-- Audit workspace và dữ liệu synthetic.
-- Chốt source-of-truth matrix, glossary và final state machine.
-- Liệt kê prerequisite lab, fencing, storage, account/microversion.
+- [x] Chốt câu mô tả đề tài, in/out scope và hai mức vertical slice.
+- [x] Lập reuse/build matrix cho Nova, Placement, Masakari, NetBox, OTel và dependency ngoại vi.
+- [x] Audit workspace và dữ liệu synthetic bằng evidence từ file hiện có.
+- [x] Chốt source-of-truth matrix, glossary và bốn lifecycle tách biệt.
+- [x] Lập prerequisite register P01–P09 cho lab, fencing, storage, account và microversion.
 
-**Gate W1:** tài liệu không còn diễn đạt “sửa compute”; Compute Down là scenario duy nhất của MVP đầu; mọi external dependency có vai trò rõ.
+**Gate W1: `PASS`.** Mục tiêu được mô tả là phục hồi workload/service; `COMPUTE_DOWN` là scenario duy nhất của MVP đầu; mọi external dependency có vai trò, owner và hành vi khi thiếu evidence. OpenStack Lab Readiness vẫn là `BLOCKED_EXTERNAL` vì P01–P09 đang `UNKNOWN`; điều này không làm Gate W1 thất bại.
 
 ### Tuần 2 — 31/08–06/09: Checkpoint 1 — `POST /incidents` → Recovery Context
 
@@ -1161,51 +1163,51 @@ Việc cần làm:
 
 ### 17.1 Test bắt buộc ngay Checkpoint 1
 
-| ID | Scenario | Expected |
-|---|---|---|
-| CTX-001 | `compute-01 DOWN` | Đúng rack/AZ; VM `[vm-api-01, vm-web-01]`; compute `[compute-05, compute-06]` theo thứ tự tên |
-| CTX-002 | Compute không tồn tại | 404 `RESOURCE_NOT_FOUND` |
-| CTX-003 | Type `RACK_DOWN` ở version 1 | 422 `UNSUPPORTED_INCIDENT_TYPE` |
-| CTX-004 | Payload thiếu `resource` | 422 validation error |
-| CTX-005 | Candidate là source | Bị loại |
-| CTX-006 | Candidate DOWN/disabled | Bị loại và output ổn định |
-| CTX-007 | Fixture thiếu VM→compute reference | App fail fast, chỉ ra reference lỗi |
-| CTX-008 | Gọi lặp cùng payload | Cùng context; không mutate fixture |
+| ID      | Scenario                             | Expected                                                                                              |
+| ------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| CTX-001 | `compute-01 DOWN`                  | Đúng rack/AZ; VM`[vm-api-01, vm-web-01]`; compute `[compute-05, compute-06]` theo thứ tự tên |
+| CTX-002 | Compute không tồn tại             | 404`RESOURCE_NOT_FOUND`                                                                             |
+| CTX-003 | Type`RACK_DOWN` ở version 1       | 422`UNSUPPORTED_INCIDENT_TYPE`                                                                      |
+| CTX-004 | Payload thiếu`resource`           | 422 validation error                                                                                  |
+| CTX-005 | Candidate là source                 | Bị loại                                                                                             |
+| CTX-006 | Candidate DOWN/disabled              | Bị loại và output ổn định                                                                       |
+| CTX-007 | Fixture thiếu VM→compute reference | App fail fast, chỉ ra reference lỗi                                                                 |
+| CTX-008 | Gọi lặp cùng payload              | Cùng context; không mutate fixture                                                                  |
 
 ### 17.2 Test planner/impact
 
-| ID | Scenario | Expected |
-|---|---|---|
-| IMP-001 | Healthy replicas dưới `desired_replicas` nhưng vẫn đạt `min_healthy` | `DEGRADED`; chưa coi `HEALTHY` |
-| IMP-002 | Mandatory component dưới `min_healthy` | Service `DOWN`, deficit rõ |
-| PLN-001 | Đủ capacity | Tất cả required VM được đặt hợp lệ |
-| PLN-002 | Thiếu capacity | Critical service được ưu tiên; unplaced có reason |
-| PLN-003 | Nova host anti-affinity hoặc custom rack-diversity block | Candidate bị loại theo đúng constraint, không trộn semantics |
-| PLN-004 | Network/storage incompatible | Candidate bị loại theo đúng constraint |
-| PLN-005 | Native HA thành công | `NO_ACTION`, không sinh plan thực thi |
-| PLN-006 | Mapping critical application/service thiếu | Incident `CONTEXT_INCOMPLETE → MANUAL_REQUIRED`; không sinh executable plan |
+| ID      | Scenario                                                                      | Expected                                                                       |
+| ------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| IMP-001 | Healthy replicas dưới`desired_replicas` nhưng vẫn đạt `min_healthy` | `DEGRADED`; chưa coi `HEALTHY`                                            |
+| IMP-002 | Mandatory component dưới`min_healthy`                                     | Service`DOWN`, deficit rõ                                                   |
+| PLN-001 | Đủ capacity                                                                 | Tất cả required VM được đặt hợp lệ                                    |
+| PLN-002 | Thiếu capacity                                                               | Critical service được ưu tiên; unplaced có reason                        |
+| PLN-003 | Nova host anti-affinity hoặc custom rack-diversity block                     | Candidate bị loại theo đúng constraint, không trộn semantics             |
+| PLN-004 | Network/storage incompatible                                                  | Candidate bị loại theo đúng constraint                                     |
+| PLN-005 | Native HA thành công                                                        | `NO_ACTION`, không sinh plan thực thi                                      |
+| PLN-006 | Mapping critical application/service thiếu                                   | Incident`CONTEXT_INCOMPLETE → MANUAL_REQUIRED`; không sinh executable plan |
 
 ### 17.3 Test governance/execution/verification
 
-| ID | Scenario | Expected |
-|---|---|---|
-| GOV-001 | Approve v1 rồi đổi target thành v2 | Approval v1 vô hiệu |
-| GOV-002 | Execute chưa approve | Reject; không có write action |
-| GOV-003 | Source chưa fence | Blocking fail |
-| GOV-004 | Capacity đổi sau approve | `STALE → REPLAN` |
-| EXE-001 | Bấm execute hai lần | Một action duy nhất |
-| EXE-002 | Nova timeout/503 | Retry/backoff giới hạn, audit rõ |
-| EXE-003 | Backend crash sau API accepted nhưng trước khi lưu response | Action `UNKNOWN/RECONCILING`; query external state trước, không tự dispatch lại |
-| EXE-004 | Action thứ hai trong batch fail | Dependent actions bị block; independent action chỉ tiếp tục nếu policy cho phép; result không success |
-| VER-001 | VM ACTIVE + app healthy | `SUCCESS` |
-| VER-002 | VM ACTIVE + HTTP health fail | `PARTIAL` |
-| VER-003 | Storage/network mandatory fail | `FAILED` |
-| SEC-001 | Viewer gọi approve/execute | 403; không state change/action |
-| SEC-002 | Operator execute ngoài allowlist | 403/block; audit reason |
-| SEC-003 | Vượt write-endpoint rate limit | 429; không tạo transition/action |
-| RUN-001 | Export approved plan sang Ansible | Đúng plan hash/order/target/checks; không có secret; không auto-apply |
-| E2E-001 | Compute Down happy path | Full timeline + observed recovery time; mock chỉ test synthetic `rto_met`, lab báo operational RTO riêng |
-| E2E-002 | Safe stop/partial | Không execute unsafe; lý do/manual action rõ |
+| ID      | Scenario                                                        | Expected                                                                                                     |
+| ------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| GOV-001 | Approve v1 rồi đổi target thành v2                          | Approval v1 vô hiệu                                                                                        |
+| GOV-002 | Execute chưa approve                                           | Reject; không có write action                                                                              |
+| GOV-003 | Source chưa fence                                              | Blocking fail                                                                                                |
+| GOV-004 | Capacity đổi sau approve                                      | `STALE`; command replan tạo context/plan version mới                                                     |
+| EXE-001 | Bấm execute hai lần                                           | Một action duy nhất                                                                                        |
+| EXE-002 | Nova timeout/503                                                | Retry/backoff giới hạn, audit rõ                                                                          |
+| EXE-003 | Backend crash sau API accepted nhưng trước khi lưu response | Action`UNKNOWN/RECONCILING`; query external state trước, không tự dispatch lại                        |
+| EXE-004 | Action thứ hai trong batch fail                                | Dependent actions bị block; independent action chỉ tiếp tục nếu policy cho phép; result không success |
+| VER-001 | VM ACTIVE + app healthy                                         | `SUCCESS`                                                                                                  |
+| VER-002 | VM ACTIVE + HTTP health fail                                    | `PARTIAL`                                                                                                  |
+| VER-003 | Storage/network mandatory fail                                  | `FAILED`                                                                                                   |
+| SEC-001 | Viewer gọi approve/execute                                     | 403; không state change/action                                                                              |
+| SEC-002 | Operator execute ngoài allowlist                               | 403/block; audit reason                                                                                      |
+| SEC-003 | Vượt write-endpoint rate limit                                | 429; không tạo transition/action                                                                           |
+| RUN-001 | Export approved plan sang Ansible                               | Đúng plan hash/order/target/checks; không có secret; không auto-apply                                   |
+| E2E-001 | Compute Down happy path                                         | Full timeline + observed recovery time; mock chỉ test synthetic`rto_met`, lab báo operational RTO riêng |
+| E2E-002 | Safe stop/partial                                               | Không execute unsafe; lý do/manual action rõ                                                              |
 
 ### 17.4 Chất lượng test
 
@@ -1245,49 +1247,53 @@ Mỗi thuật toán nhận cùng immutable snapshot, policy version, seed và ti
 
 ### 18.3 Experiment matrix
 
-| Dataset | Capacity | Constraint | Mục đích |
-|---|---|---|---|
-| Small deterministic | Dư | Cơ bản | Correctness và explainability |
-| Small deterministic | Thiếu | Priority/min_healthy | Chứng minh service-aware objective |
-| Medium synthetic | 70–90% load | Anti-affinity/rack | Planning latency/quality |
-| Large synthetic (stretch) | Cao | Mixed constraints | Stress test collector/planner sau khi scenario generator pass medium scale |
-| OpenStack lab | Đủ cho happy case | Real Nova/Cinder/Neutron | E2E, observed recovery time và RTO compliance |
+| Dataset                   | Capacity            | Constraint               | Mục đích                                                                |
+| ------------------------- | ------------------- | ------------------------ | -------------------------------------------------------------------------- |
+| Small deterministic       | Dư                 | Cơ bản                 | Correctness và explainability                                             |
+| Small deterministic       | Thiếu              | Priority/min_healthy     | Chứng minh service-aware objective                                        |
+| Medium synthetic          | 70–90% load        | Anti-affinity/rack       | Planning latency/quality                                                   |
+| Large synthetic (stretch) | Cao                 | Mixed constraints        | Stress test collector/planner sau khi scenario generator pass medium scale |
+| OpenStack lab             | Đủ cho happy case | Real Nova/Cinder/Neutron | E2E, observed recovery time và RTO compliance                             |
 
 Không đặt target RTO tuyệt đối trước khi có manual baseline và đặc điểm lab. Báo cáo phải so với baseline cùng môi trường, cùng workload và cùng failure injection.
 
 ## 19. Điều kiện tiên quyết
 
-| ID | Điều kiện | Hạn chốt | Nếu thiếu |
-|---|---|---|---|
-| P01 | OpenStack account đọc all-project inventory, write recovery trên lab | Trước W6 | Chỉ demo mock/read-only |
-| P02 | Endpoint/microversion/SDK compatibility ghi trong `lab_profile.json` | Trước code real adapter | Không bật real executor |
-| P03 | Root disk/shared storage/volume behavior đã test thủ công | Trước evacuation | Block action có data-loss risk |
-| P04 | Fencing/power-off source có evidence | Trước W6 E2E | Không evacuate |
-| P05 | Target có headroom cho happy case | Trước W6 | Chỉ demo partial/safe-stop |
-| P06 | Mapping topology + application/priority đủ dùng | Trước W3 gate | Context incomplete/block planner |
-| P07 | Network/storage path của target được hiểu rõ | Trước W4/W6 | Manual confirmation hoặc block |
-| P08 | Maintenance window + người giám sát + rollback | Trước real failure injection | Không power-off host thật |
-| P09 | Workload demo, `/health`, marker/checksum | Trước W5/W6 | Không đo actual recovery time/RTO compliance/integrity |
+Tại thời điểm đóng W1, P01–P09 đều là `UNKNOWN`; OpenStack Lab Readiness vì vậy là `BLOCKED_EXTERNAL`. Bảng chi tiết và microversion rules nằm trong [ADR-0001](./docs/decisions/0001-week-1-foundation.md#8-openstack-lab-prerequisite-register).
+
+| ID | Điều kiện | Status | Owner vai trò | Evidence bắt buộc | Hạn chốt | Nếu thiếu |
+| --- | --- | --- | --- | --- | --- | --- |
+| P01 | Account/policy đọc all-project và write trên allowlisted lab | `UNKNOWN` | OpenStack IAM/admin | Project/role, policy probe và resource allowlist | Trước real adapter/write | Chỉ mock/read-only; real executor disabled |
+| P02 | Endpoint, region, release, Nova/Placement microversion và SDK compatibility | `UNKNOWN` | OpenStack platform admin | Sanitized discovery output và compatibility record | Trước real adapter | Không pin client; real executor disabled |
+| P03 | Root/local/shared/boot-from-volume behavior | `UNKNOWN` | Storage admin | Per-workload assessment và manual test evidence | Trước evacuation | `MANUAL_REQUIRED`; action bị block |
+| P04 | Fencing/power-off hoặc approved isolation provider | `UNKNOWN` | Infrastructure operator | Provider, target, actor, result và fresh timestamp | Trước W6 E2E | Không evacuate; không override |
+| P05 | Target capacity/headroom, traits, AZ và scheduler acceptance | `UNKNOWN` | Capacity/compute admin | Placement snapshot/generation và Nova validation | Trước W6 | Chỉ partial/safe-stop hoặc block |
+| P06 | NetBox↔Nova join và application/service/priority mapping | `UNKNOWN` | DCIM + service owner | Join contract, mapping version, owner và completeness report | Trước W3 gate | Context incomplete; planner blocked |
+| P07 | Network/physnet/SG/firewall và storage reachability | `UNKNOWN` | Network + storage admin | Binding/path test và dependency confirmation | Trước W4/W6 | Blocking pre-check/manual task |
+| P08 | Maintenance window, supervisor, kill switch và rollback | `UNKNOWN` | Change manager + DR operator | Approved change và rollback rehearsal | Trước failure injection | Không tác động host thật |
+| P09 | Demo workload, health contract, marker/checksum và RTO baseline | `UNKNOWN` | Service owner/SRE | Manifest, health/min-replica contract và baseline | Trước W5/W6 | Không claim service recovery/RTO/integrity |
+
+Rule P02 đã khóa: target host chỉ định cần Nova `>=2.29`; executor không gửi `force` và Nova `>=2.68` không chấp nhận field này; Nova `>=2.95` giữ VM ở trạng thái dừng sau evacuation nên plan cần `START` khi policy yêu cầu; Placement allocation candidates cần API `>=1.10`. Mọi giá trị vẫn phải được discover và xác minh trên lab, không điền giả định.
 
 ## 20. Risk register
 
-| ID | Rủi ro | Mức | Giảm thiểu |
-|---|---|---:|---|
-| R01 | Scope creep sang rack, multi-site, AI, container | High | Freeze Compute Down; extension chỉ sau W7 gate |
-| R02 | Dữ liệu NetBox/runtime stale hoặc mapping sai | High | Source-of-truth rõ, timestamp/version, re-query, unknown không pass |
-| R03 | Race với Masakari/operator | High | HA gate, external event id, lock, dedupe và revalidate |
-| R04 | Source chưa fence nhưng bị evacuate | Critical | Blocking fencing evidence, không có override trong MVP |
-| R05 | Local ephemeral disk mất sau evacuation | High | Thu root disk type, risk flag, backup/shared storage policy |
-| R06 | Không đủ capacity | High | Partial plan, service priority, deficit/reason, không overcommit |
-| R07 | Scheduler từ chối target hoặc allocation race | Medium | Placement snapshot + headroom + Nova validate/claim + replan |
-| R08 | Network/storage dependency thiếu dữ liệu | High | Blocking/manual precheck, không assume PASS |
-| R09 | Plan được duyệt nhưng state đổi | High | Plan hash/version, revalidation, stale→replan |
-| R10 | Duplicate alert/execute | High | Idempotency key, incident/VM locks, action tracking |
-| R11 | API timeout/409/503 | Medium | Error mapping, bounded retry/backoff, audit và operator escalation |
-| R12 | Credential/write action ảnh hưởng lab khác | High | Least privilege, allowlist, dry-run default, secret ngoài repo |
-| R13 | Generator synthetic không phù hợp model OpenStack | Medium | Fixture nhỏ trước; extension VM→host/capacity/AZ có migration rõ |
-| R14 | UI làm chậm core backend | Medium | UI chỉ sau mock E2E; polling trước realtime nếu cần |
-| R15 | Demo live không ổn định | High | Rehearsal, rollback, data riêng và video fallback |
+| ID  | Rủi ro                                              |     Mức | Giảm thiểu                                                           |
+| --- | ---------------------------------------------------- | -------: | ---------------------------------------------------------------------- |
+| R01 | Scope creep sang rack, multi-site, AI, container     |     High | Freeze Compute Down; extension chỉ sau W7 gate                        |
+| R02 | Dữ liệu NetBox/runtime stale hoặc mapping sai     |     High | Source-of-truth rõ, timestamp/version, re-query, unknown không pass  |
+| R03 | Race với Masakari/operator                          |     High | HA gate, external event id, lock, dedupe và revalidate                |
+| R04 | Source chưa fence nhưng bị evacuate               | Critical | Blocking fencing evidence, không có override trong MVP               |
+| R05 | Local ephemeral disk mất sau evacuation             |     High | Thu root disk type, risk flag, backup/shared storage policy            |
+| R06 | Không đủ capacity                                 |     High | Partial plan, service priority, deficit/reason, không overcommit      |
+| R07 | Scheduler từ chối target hoặc allocation race     |   Medium | Placement snapshot + headroom + Nova validate/claim + replan           |
+| R08 | Network/storage dependency thiếu dữ liệu          |     High | Blocking/manual precheck, không assume PASS                           |
+| R09 | Plan được duyệt nhưng state đổi               |     High | Plan hash/version, revalidation, stale→replan                         |
+| R10 | Duplicate alert/execute                              |     High | Idempotency key, incident/VM locks, action tracking                    |
+| R11 | API timeout/409/503                                  |   Medium | Error mapping, bounded retry/backoff, audit và operator escalation    |
+| R12 | Credential/write action ảnh hưởng lab khác       |     High | Least privilege, allowlist, dry-run default, secret ngoài repo        |
+| R13 | Generator synthetic không phù hợp model OpenStack |   Medium | Fixture nhỏ trước; extension VM→host/capacity/AZ có migration rõ |
+| R14 | UI làm chậm core backend                           |   Medium | UI chỉ sau mock E2E; polling trước realtime nếu cần               |
+| R15 | Demo live không ổn định                          |     High | Rehearsal, rollback, data riêng và video fallback                    |
 
 ## 21. Security, safety và audit
 

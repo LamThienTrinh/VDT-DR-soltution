@@ -2,11 +2,13 @@
 
 Hệ thống hỗ trợ phân tích sự cố hạ tầng OpenStack, xác định workload và dịch vụ bị ảnh hưởng, lập phương án phục hồi an toàn, chờ phê duyệt, thực thi và kiểm chứng kết quả.
 
->  Bài toán và kế hoạch đã được chốt; backend DR chưa được triển khai. Milestone đầu tiên là `compute-01 DOWN → POST /incidents → Recovery Context` bằng dữ liệu mock.
+> **W1 đã hoàn thành:** Gate tài liệu `PASS`; backend W2 chưa được triển khai. OpenStack Lab Readiness hiện là `BLOCKED_EXTERNAL` vì P01–P09 chưa có evidence thực tế. Milestone tiếp theo là `compute-01 DOWN → POST /incidents → Recovery Context` bằng aggregate mock.
+
+Decision record chuẩn của Tuần 1: [ADR-0001 — Nền tảng bài toán OpenStack DR Orchestrator](./docs/decisions/0001-week-1-foundation.md).
 
 ## Lưu ý:
 
-Đề tài không cố sửa server hoặc rack vật lý bị hỏng. Khi một compute gặp sự cố, hệ thống cần trả lời:
+Đề tài phục hồi workload và service trên hạ tầng còn khả dụng; vòng đời khắc phục thiết bị vật lý nằm ngoài control plane. Khi một compute gặp sự cố, hệ thống cần trả lời:
 
 - VM nào đang nằm trên compute đó?
 - Các VM này thuộc component, service và application nào?
@@ -24,7 +26,7 @@ VM             = đơn vị được recovery trong MVP
 Service / App  = đối tượng cuối cùng cần bảo vệ
 ```
 
-Mục tiêu của dự án là **giảm downtime của dịch vụ**, không phải giảm thời gian sửa phần cứng.
+Mục tiêu của dự án là **giảm downtime của dịch vụ** và kiểm chứng service đã đạt lại mức hoạt động cần thiết.
 
 ## Vì sao cần hệ thống này?
 
@@ -48,13 +50,14 @@ DR Orchestrator là lớp giải quyết chuỗi quyết định và điều ph�
 
 Không.
 
-| Thành phần    | Vai trò                                                                                                  |
-| --------------- | --------------------------------------------------------------------------------------------------------- |
-| Nova/Placement  | Quản lý VM, scheduling, capacity và các recovery primitive                                            |
-| Masakari        | Host-failure/VMHA workflow và evacuation automation                                                      |
-| NetBox/DCIM     | Topology vật lý và inventory dạng system of record                                                    |
-| Monitoring/OTel | Telemetry và tín hiệu sự cố                                                                          |
-| DR Orchestrator | Ghép hạ tầng với application context, lập batch plan, approval, audit và service-level verification |
+| Thành phần | Vai trò |
+| --- | --- |
+| Nova | Runtime truth của compute/VM, recovery primitive và scheduler validation |
+| Placement | Capacity, usage, trait/aggregate và allocation candidates; không bị thay thế bởi batch planner |
+| Masakari | Native HA integration/baseline tùy chọn; orchestrator quan sát, dedupe và không phát recovery trùng |
+| NetBox/DCIM | Physical topology và inventory dạng system of record; không phải live runtime truth |
+| Monitoring/OTel | Alert/evidence và telemetry identity; OTel không phải alert engine hoặc observability backend |
+| DR Orchestrator | Ghép runtime, topology và application context; lập plan, approval, audit và service-level verification |
 
 Điểm bổ sung chính của đề tài là **application-aware recovery**. Planner không chỉ cố cứu nhiều VM nhất mà ưu tiên tập workload giúp service quan trọng đạt lại mức hoạt động tối thiểu.
 
@@ -219,17 +222,17 @@ Kết quả cuối được hiểu như sau:
 
 ### OpenStack Lab Acceptance
 
-Real evacuation chỉ được chạy khi có đầy đủ account, microversion, workload test, shared-storage/root-disk assessment, target capacity, fencing evidence và maintenance window. Nếu thiếu điều kiện bên ngoài, kết quả phải ghi `BLOCKED_EXTERNAL`, không được trình bày mock E2E như recovery thật.
+Real evacuation chỉ được chạy khi có đầy đủ account, microversion, workload test, shared-storage/root-disk assessment, target capacity, fencing evidence và maintenance window. Khi các điều kiện này chưa có, **báo cáo lab readiness/acceptance** là `BLOCKED_EXTERNAL`; đây không phải runtime incident state. Incident thiếu critical evidence sau khi đã vào workflow kết thúc ở `MANUAL_REQUIRED`. Mock E2E không được trình bày như recovery thật.
 
 ### Chưa làm trong core MVP
 
 - Rack Down, multi-site hoặc cross-AZ DR.
 - Container/Kubernetes relocation.
-- Sửa chữa hoặc tự bật lại phần cứng.
+- Khắc phục hoặc tự bật lại thiết bị vật lý.
 - Power/PDU optimization.
 - Stateful leader/quorum/replication-lag recovery.
 - Tự động dừng workload thường để nhường capacity.
-- Tự động sửa external firewall.
+- Tự động thay đổi external firewall.
 - AI/LLM làm control plane.
 
 ## Dữ liệu mock và bộ synthetic NetBox
@@ -284,6 +287,7 @@ dr-system/
 ## Tài liệu dự án
 
 - [Kế hoạch triển khai đầy đủ](./plan_full.md) — kiến trúc, data/API contract, roadmap 7 tuần, state machine, thuật toán, test plan, risk và Definition of Done.
+- [ADR-0001 — Decision record Tuần 1](./docs/decisions/0001-week-1-foundation.md) — scope, reuse/build, source-of-truth, glossary, state machine, prerequisite và Gate W1 evidence.
 - [Synthetic NetBox README](./synthetic_netbox-1fhuexnof3gozgps46qacwbjyo/synthetic_netbox/README.md) — mô tả bộ sinh dữ liệu hiện có.
 
 ## Tóm lại
