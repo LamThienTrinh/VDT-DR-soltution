@@ -1,0 +1,181 @@
+seed: 20260826
+synthetic_prefix: "SYN"
+
+targets:
+  switches: 50000
+  hypervisors: 8000
+  virtual_machines: 50000
+  databases: 2000
+  ip_addresses: 2000000
+  racks: 4000
+  clusters: 500
+  vlans: 5000
+
+# SYN-VULN-* identifiers below are synthetic ground truth for testing.
+# Replace them with your own advisory/CVE mapping if you want to test a real vulnerability database.
+ip:
+  private_ratio: 0.75
+  batch_size: 5000
+  private_pools:
+    hoa-lac: "10.0.0.0/11"
+    phap-van: "10.32.0.0/11"
+    binh-duong: "10.64.0.0/11"
+    hoang-hoa-tham-hcm: "10.96.0.0/11"
+    da-nang: "10.128.0.0/11"
+  external_sim_pools:
+    hoa-lac: "100.64.0.0/13"
+    phap-van: "100.72.0.0/13"
+    binh-duong: "100.80.0.0/13"
+    hoang-hoa-tham-hcm: "100.88.0.0/13"
+    da-nang: "100.96.0.0/13"
+
+sites:
+  - {slug: hoa-lac, code: HL, name: "SYN Viettel - Hòa Lạc", region: north, weight: 0.30, latitude: 21.0110, longitude: 105.5270}
+  - {slug: phap-van, code: PV, name: "SYN Viettel - Pháp Vân", region: north, weight: 0.20, latitude: 20.9650, longitude: 105.8460}
+  - {slug: binh-duong, code: BD, name: "SYN Viettel - Bình Dương", region: south, weight: 0.22, latitude: 10.9804, longitude: 106.6519}
+  - {slug: hoang-hoa-tham-hcm, code: HHT, name: "SYN Viettel - Hoàng Hoa Thám (TP.HCM)", region: south, weight: 0.16, latitude: 10.8010, longitude: 106.6520}
+  - {slug: da-nang, code: DN, name: "SYN Viettel - Đà Nẵng", region: central, weight: 0.12, latitude: 16.0544, longitude: 108.2022}
+
+rooms_per_site: 4
+
+# Per platform: 84% normal, 8% legacy, 5% vulnerable, 3% legacy+vulnerable.
+switch_platforms:
+  - slug: ciscoiosxe
+    name: Cisco IOS XE
+    manufacturer: Cisco
+    device_model: Catalyst 9300
+    weight: 0.30
+    napalm_driver: ios
+    versions:
+      - {version: "17.9.5", case: normal, eol: false, known_vulnerable: false, vulnerability_ids: [], weight: 0.84}
+      - {version: "16.6.10", case: legacy, eol: true, known_vulnerable: false, vulnerability_ids: [], weight: 0.08}
+      - {version: "17.3.1", case: vulnerable, eol: false, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-IOSXE-001"], weight: 0.05}
+      - {version: "16.6.5", case: legacy_vulnerable, eol: true, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-IOSXE-002"], weight: 0.03}
+  - slug: huaweicx
+    name: Huawei CX
+    manufacturer: Huawei
+    device_model: CE6865
+    weight: 0.25
+    napalm_driver: ""
+    versions:
+      - {version: "V200R022C00", case: normal, eol: false, known_vulnerable: false, vulnerability_ids: [], weight: 0.84}
+      - {version: "V200R005C10", case: legacy, eol: true, known_vulnerable: false, vulnerability_ids: [], weight: 0.08}
+      - {version: "V200R019C10", case: vulnerable, eol: false, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-HUAWEICX-001"], weight: 0.05}
+      - {version: "V100R006C00", case: legacy_vulnerable, eol: true, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-HUAWEICX-002"], weight: 0.03}
+  - slug: junos
+    name: Juniper Junos
+    manufacturer: Juniper
+    device_model: QFX5120
+    weight: 0.20
+    napalm_driver: junos
+    versions:
+      - {version: "21.4R3-S5", case: normal, eol: false, known_vulnerable: false, vulnerability_ids: [], weight: 0.84}
+      - {version: "12.3R12", case: legacy, eol: true, known_vulnerable: false, vulnerability_ids: [], weight: 0.08}
+      - {version: "20.4R1", case: vulnerable, eol: false, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-JUNOS-001"], weight: 0.05}
+      - {version: "11.4R13", case: legacy_vulnerable, eol: true, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-JUNOS-002"], weight: 0.03}
+  - slug: ciscoiosxr
+    name: Cisco IOS XR
+    manufacturer: Cisco
+    device_model: NCS 5501
+    weight: 0.15
+    napalm_driver: iosxr
+    versions:
+      - {version: "7.7.2", case: normal, eol: false, known_vulnerable: false, vulnerability_ids: [], weight: 0.84}
+      - {version: "6.1.4", case: legacy, eol: true, known_vulnerable: false, vulnerability_ids: [], weight: 0.08}
+      - {version: "7.3.1", case: vulnerable, eol: false, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-IOSXR-001"], weight: 0.05}
+      - {version: "5.3.4", case: legacy_vulnerable, eol: true, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-IOSXR-002"], weight: 0.03}
+  - slug: eos
+    name: Arista EOS
+    manufacturer: Arista
+    device_model: 7050SX3
+    weight: 0.10
+    napalm_driver: eos
+    versions:
+      - {version: "4.31.2F", case: normal, eol: false, known_vulnerable: false, vulnerability_ids: [], weight: 0.84}
+      - {version: "4.20.15M", case: legacy, eol: true, known_vulnerable: false, vulnerability_ids: [], weight: 0.08}
+      - {version: "4.27.0F", case: vulnerable, eol: false, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-EOS-001"], weight: 0.05}
+      - {version: "4.18.11M", case: legacy_vulnerable, eol: true, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-EOS-002"], weight: 0.03}
+
+compute_os_catalog:
+  - {name: "VMware ESXi", platform_slug: "syn-esxi", version: "7.0 U3", case: normal, eol: false, known_vulnerable: false, vulnerability_ids: [], weight: 0.68}
+  - {name: "Rocky Linux", platform_slug: "syn-rocky", version: "9.3", case: normal, eol: false, known_vulnerable: false, vulnerability_ids: [], weight: 0.15}
+  - {name: "RHEL", platform_slug: "syn-rhel", version: "7.9", case: legacy, eol: true, known_vulnerable: false, vulnerability_ids: [], weight: 0.07}
+  - {name: "CentOS", platform_slug: "syn-centos", version: "6.10", case: legacy, eol: true, known_vulnerable: false, vulnerability_ids: [], weight: 0.04}
+  - {name: "CentOS", platform_slug: "syn-centos", version: "4.9", case: legacy_vulnerable, eol: true, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-CENTOS4-001"], weight: 0.04}
+  - {name: "RHEL", platform_slug: "syn-rhel", version: "8.3", case: vulnerable, eol: false, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-RHEL-001"], weight: 0.02}
+
+vm_os_catalog:
+  - {name: "Ubuntu", platform_slug: "syn-ubuntu", version: "22.04.4", case: normal, eol: false, known_vulnerable: false, vulnerability_ids: [], weight: 0.55}
+  - {name: "Rocky Linux", platform_slug: "syn-rocky", version: "9.3", case: normal, eol: false, known_vulnerable: false, vulnerability_ids: [], weight: 0.18}
+  - {name: "RHEL", platform_slug: "syn-rhel", version: "8.8", case: normal, eol: false, known_vulnerable: false, vulnerability_ids: [], weight: 0.10}
+  - {name: "CentOS", platform_slug: "syn-centos", version: "6.10", case: legacy, eol: true, known_vulnerable: false, vulnerability_ids: [], weight: 0.06}
+  - {name: "Ubuntu", platform_slug: "syn-ubuntu", version: "14.04.6", case: legacy, eol: true, known_vulnerable: false, vulnerability_ids: [], weight: 0.04}
+  - {name: "CentOS", platform_slug: "syn-centos", version: "4.9", case: legacy_vulnerable, eol: true, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-CENTOS4-001"], weight: 0.04}
+  - {name: "Windows Server", platform_slug: "syn-win2008", version: "2008 R2", case: legacy_vulnerable, eol: true, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-WIN2008-001"], weight: 0.02}
+  - {name: "Ubuntu", platform_slug: "syn-ubuntu", version: "20.04.1", case: vulnerable, eol: false, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-UBUNTU-001"], weight: 0.01}
+
+# Runtime fault is independent from software lifecycle/security state.
+service_failure_modes:
+  - {failure_mode: none, weight: 0.90}
+  - {failure_mode: timeout, weight: 0.025}
+  - {failure_mode: auth_failure, weight: 0.020}
+  - {failure_mode: connection_refused, weight: 0.020}
+  - {failure_mode: port_mismatch, weight: 0.015}
+  - {failure_mode: tls_expired, weight: 0.010}
+  - {failure_mode: version_parse_error, weight: 0.010}
+
+database_engines:
+  - name: PostgreSQL
+    slug: postgresql
+    port: 5432
+    weight: 0.35
+    versions:
+      - {version: "15.5", case: normal, eol: false, known_vulnerable: false, vulnerability_ids: [], weight: 0.80}
+      - {version: "12.17", case: legacy, eol: true, known_vulnerable: false, vulnerability_ids: [], weight: 0.10}
+      - {version: "14.1", case: vulnerable, eol: false, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-POSTGRES-001"], weight: 0.06}
+      - {version: "9.6.24", case: legacy_vulnerable, eol: true, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-POSTGRES-002"], weight: 0.04}
+  - name: MariaDB
+    slug: mariadb
+    port: 3306
+    weight: 0.25
+    versions:
+      - {version: "10.11.6", case: normal, eol: false, known_vulnerable: false, vulnerability_ids: [], weight: 0.80}
+      - {version: "10.2.44", case: legacy, eol: true, known_vulnerable: false, vulnerability_ids: [], weight: 0.10}
+      - {version: "10.5.8", case: vulnerable, eol: false, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-MARIADB-001"], weight: 0.06}
+      - {version: "5.5.68", case: legacy_vulnerable, eol: true, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-MARIADB-002"], weight: 0.04}
+  - name: MySQL
+    slug: mysql
+    port: 3306
+    weight: 0.10
+    versions:
+      - {version: "8.0.36", case: normal, eol: false, known_vulnerable: false, vulnerability_ids: [], weight: 0.80}
+      - {version: "5.7.44", case: legacy, eol: true, known_vulnerable: false, vulnerability_ids: [], weight: 0.10}
+      - {version: "8.0.20", case: vulnerable, eol: false, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-MYSQL-001"], weight: 0.06}
+      - {version: "5.5.62", case: legacy_vulnerable, eol: true, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-MYSQL-002"], weight: 0.04}
+  - name: Oracle
+    slug: oracle
+    port: 1521
+    weight: 0.15
+    versions:
+      - {version: "19c", case: normal, eol: false, known_vulnerable: false, vulnerability_ids: [], weight: 0.80}
+      - {version: "12.1.0.2", case: legacy, eol: true, known_vulnerable: false, vulnerability_ids: [], weight: 0.10}
+      - {version: "19.3", case: vulnerable, eol: false, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-ORACLE-001"], weight: 0.06}
+      - {version: "11.2.0.4", case: legacy_vulnerable, eol: true, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-ORACLE-002"], weight: 0.04}
+  - name: SQL Server
+    slug: mssql
+    port: 1433
+    weight: 0.10
+    versions:
+      - {version: "2022", case: normal, eol: false, known_vulnerable: false, vulnerability_ids: [], weight: 0.80}
+      - {version: "2012", case: legacy, eol: true, known_vulnerable: false, vulnerability_ids: [], weight: 0.10}
+      - {version: "2019", case: vulnerable, eol: false, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-MSSQL-001"], weight: 0.06}
+      - {version: "2008", case: legacy_vulnerable, eol: true, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-MSSQL-002"], weight: 0.04}
+  - name: MongoDB
+    slug: mongodb
+    port: 27017
+    weight: 0.05
+    versions:
+      - {version: "7.0.5", case: normal, eol: false, known_vulnerable: false, vulnerability_ids: [], weight: 0.80}
+      - {version: "4.0.28", case: legacy, eol: true, known_vulnerable: false, vulnerability_ids: [], weight: 0.10}
+      - {version: "6.0.1", case: vulnerable, eol: false, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-MONGO-001"], weight: 0.06}
+      - {version: "3.6.23", case: legacy_vulnerable, eol: true, known_vulnerable: true, vulnerability_ids: ["SYN-VULN-MONGO-002"], weight: 0.04}
