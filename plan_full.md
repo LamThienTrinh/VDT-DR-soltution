@@ -976,6 +976,8 @@ Kết quả:
 
 ### Tuần 2 — 31/08–06/09: Checkpoint 1 — `POST /incidents` → Recovery Context
 
+**Trạng thái:** `COMPLETED` ngày `01/09/2026`. Backend, test suite và evidence: [Checkpoint `context-v1`](./docs/checkpoints/context-v1.md).
+
 #### 01/09
 
 - Tạo `dr-system/`, `pyproject.toml`, package folders và test skeleton.
@@ -1012,7 +1014,7 @@ Kết quả:
 - Demo checkpoint, lưu test evidence và gắn nhãn checkpoint nội bộ `context-v1` trong tài liệu/release note; chỉ tạo Git tag nếu workspace đã được khởi tạo Git.
 - Chỉ chuyển tuần 3 nếu toàn bộ gate đạt.
 
-**Gate W2 / Definition of Done:** xem mục 16.1.
+**Gate W2: `PASS`.** Toàn bộ Definition of Done tại mục 16.1 đã đạt; 46 unit/API tests pass và Uvicorn/curl smoke test trả đúng Recovery Context deterministic.
 
 ### Tuần 3 — 07/09–13/09: Persistence + Application-aware Impact + Candidate Filter
 
@@ -1102,16 +1104,16 @@ Kết quả:
 
 ### 16.1 DoD Checkpoint 1
 
-- [ ] `dr-system` chạy bằng một lệnh được ghi trong README.
-- [ ] `POST /incidents` nhận đúng `COMPUTE_DOWN/compute-01`.
-- [ ] Response có đúng rack/AZ, đúng tập affected VMs và chỉ compute hợp lệ.
-- [ ] Kết quả deterministic giữa các lần chạy.
-- [ ] Unknown compute trả 404; type sai/payload sai trả 422.
-- [ ] Source/down/disabled compute không xuất hiện trong candidate pool.
-- [ ] Fixture schema hoặc reference sai làm app fail fast với lỗi dễ hiểu.
-- [ ] Service không mutate dữ liệu mock.
-- [ ] Unit/API tests pass; README có curl và expected output.
-- [ ] Chưa có bất kỳ write call nào ra OpenStack.
+- [x] `dr-system` chạy bằng một lệnh được ghi trong README.
+- [x] `POST /incidents` nhận đúng `COMPUTE_DOWN/compute-01`.
+- [x] Response có đúng rack/AZ, đúng tập affected VMs và chỉ compute hợp lệ.
+- [x] Kết quả deterministic giữa các lần chạy.
+- [x] Unknown compute trả 404; type sai/payload sai trả 422.
+- [x] Source/down/disabled compute không xuất hiện trong candidate pool.
+- [x] Fixture schema hoặc reference sai làm app fail fast với lỗi dễ hiểu.
+- [x] Service không mutate dữ liệu mock.
+- [x] Unit/API tests pass; README có curl và expected output.
+- [x] Chưa có bất kỳ write call nào ra OpenStack.
 
 ### 16.2 DoD Impact + Planner
 

@@ -1,0 +1,140 @@
+{
+  "schema_version": "1.0",
+  "snapshot_at": "2026-09-01T09:00:00+07:00",
+  "computes": [
+    {
+      "name": "compute-01",
+      "status": "DOWN",
+      "enabled": false,
+      "az": "AZ-01",
+      "rack": "rack-01",
+      "capacity": {
+        "vcpu": 32,
+        "ram_mb": 65536,
+        "disk_gb": 1000
+      },
+      "allocated": {
+        "vcpu": 6,
+        "ram_mb": 12288,
+        "disk_gb": 120
+      }
+    },
+    {
+      "name": "compute-02",
+      "status": "DOWN",
+      "enabled": true,
+      "az": "AZ-01",
+      "rack": "rack-02",
+      "capacity": {
+        "vcpu": 32,
+        "ram_mb": 65536,
+        "disk_gb": 1000
+      },
+      "allocated": {
+        "vcpu": 8,
+        "ram_mb": 16384,
+        "disk_gb": 200
+      }
+    },
+    {
+      "name": "compute-03",
+      "status": "UP",
+      "enabled": false,
+      "az": "AZ-01",
+      "rack": "rack-03",
+      "capacity": {
+        "vcpu": 32,
+        "ram_mb": 65536,
+        "disk_gb": 1000
+      },
+      "allocated": {
+        "vcpu": 4,
+        "ram_mb": 8192,
+        "disk_gb": 100
+      }
+    },
+    {
+      "name": "compute-04",
+      "status": "UP",
+      "enabled": true,
+      "az": "AZ-02",
+      "rack": "rack-04",
+      "capacity": {
+        "vcpu": 32,
+        "ram_mb": 65536,
+        "disk_gb": 1000
+      },
+      "allocated": {
+        "vcpu": 32,
+        "ram_mb": 65536,
+        "disk_gb": 1000
+      }
+    },
+    {
+      "name": "compute-05",
+      "status": "UP",
+      "enabled": true,
+      "az": "AZ-01",
+      "rack": "rack-05",
+      "capacity": {
+        "vcpu": 32,
+        "ram_mb": 65536,
+        "disk_gb": 1000
+      },
+      "allocated": {
+        "vcpu": 16,
+        "ram_mb": 32768,
+        "disk_gb": 400
+      }
+    },
+    {
+      "name": "compute-06",
+      "status": "UP",
+      "enabled": true,
+      "az": "AZ-02",
+      "rack": "rack-06",
+      "capacity": {
+        "vcpu": 32,
+        "ram_mb": 65536,
+        "disk_gb": 1000
+      },
+      "allocated": {
+        "vcpu": 12,
+        "ram_mb": 24576,
+        "disk_gb": 300
+      }
+    }
+  ],
+  "vms": [
+    {
+      "name": "vm-web-01",
+      "compute": "compute-01",
+      "status": "ACTIVE",
+      "resources": {
+        "vcpu": 2,
+        "ram_mb": 4096,
+        "disk_gb": 40
+      }
+    },
+    {
+      "name": "vm-api-01",
+      "compute": "compute-01",
+      "status": "ACTIVE",
+      "resources": {
+        "vcpu": 4,
+        "ram_mb": 8192,
+        "disk_gb": 80
+      }
+    },
+    {
+      "name": "vm-batch-01",
+      "compute": "compute-03",
+      "status": "ACTIVE",
+      "resources": {
+        "vcpu": 2,
+        "ram_mb": 4096,
+        "disk_gb": 50
+      }
+    }
+  ]
+}

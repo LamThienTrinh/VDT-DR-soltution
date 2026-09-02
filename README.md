@@ -2,7 +2,7 @@
 
 Hệ thống hỗ trợ phân tích sự cố hạ tầng OpenStack, xác định workload và dịch vụ bị ảnh hưởng, lập phương án phục hồi an toàn, chờ phê duyệt, thực thi và kiểm chứng kết quả.
 
-> **W1 đã hoàn thành:** Gate tài liệu `PASS`; backend W2 chưa được triển khai. OpenStack Lab Readiness hiện là `BLOCKED_EXTERNAL` vì P01–P09 chưa có evidence thực tế. Milestone tiếp theo là `compute-01 DOWN → POST /incidents → Recovery Context` bằng aggregate mock.
+> **W1 và W2 đã hoàn thành:** Gate tài liệu W1 và checkpoint `context-v1` đều `PASS`. Backend read-only hiện chạy được luồng `compute-01 DOWN → POST /incidents → Recovery Context` bằng aggregate mock. OpenStack Lab Readiness vẫn là `BLOCKED_EXTERNAL` vì P01–P09 chưa có evidence thực tế; milestone tiếp theo là Persistence + Application-aware Impact + Candidate Filter của W3.
 
 Decision record chuẩn của Tuần 1: [ADR-0001 — Nền tảng bài toán OpenStack DR Orchestrator](./docs/decisions/0001-week-1-foundation.md).
 
@@ -288,6 +288,8 @@ dr-system/
 
 - [Kế hoạch triển khai đầy đủ](./plan_full.md) — kiến trúc, data/API contract, roadmap 7 tuần, state machine, thuật toán, test plan, risk và Definition of Done.
 - [ADR-0001 — Decision record Tuần 1](./docs/decisions/0001-week-1-foundation.md) — scope, reuse/build, source-of-truth, glossary, state machine, prerequisite và Gate W1 evidence.
+- [Backend Recovery Context](./dr-system/README.md) — setup, chạy API, test và contract của checkpoint `context-v1`.
+- [Evidence Gate W2](./docs/checkpoints/context-v1.md) — test/smoke evidence và checklist nghiệm thu checkpoint.
 - [Synthetic NetBox README](./synthetic_netbox-1fhuexnof3gozgps46qacwbjyo/synthetic_netbox/README.md) — mô tả bộ sinh dữ liệu hiện có.
 
 ## Tóm lại
@@ -301,4 +303,4 @@ DR Orchestrator:      Nên phục hồi gì trước, đặt ở đâu và chạ
 Verifier cho biết:    Service đã thực sự hoạt động trở lại chưa?
 ```
 
-Việc cần làm tiếp theo là dựng `dr-system` và hoàn thành duy nhất checkpoint `compute-01 DOWN → Recovery Context` trước khi triển khai planner, AI hoặc recovery thật.
+Việc cần làm tiếp theo là W3: thêm persistence, application-aware impact và hard-constraint candidate filter; chưa mở recovery thật khi P01–P09 còn thiếu evidence.
